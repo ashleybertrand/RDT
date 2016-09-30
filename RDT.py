@@ -50,11 +50,63 @@ class Packet:
         computed_checksum_S = checksum.hexdigest()
         #and check if the same
         return checksum_S != computed_checksum_S
-        
+
+class Packet_2(Packet):
+    flag_num_S_length = 1
+    length_S_length = 10
+
+    def __init__(self, flag):
+        self.flag = flag
+
+    @classmethod
+    def from_byte_S(self, byte_S):
+        if Packet.corrupt(byte_S):
+            raise RuntimeError('Cannot initialize Packet: byte_S is corrupt')
+        #extract the fields
+        flag = int(byte_S[0])
+        return self(flag)
+
+
+    def get_byte_S(self):
+        #convert flag of a byte field of seq_num_S_length bytes
+        flag_num_S = str(self.flag).zfill(self.flag_num_S_length)
+        #convert length to a byte field of length_S_length bytes
+        length_S = str(self.length_S_length + len(flag_num_S) + self.checksum_length).zfill(self.length_S_length)
+        #compute the checksum
+        checksum = hashlib.md5((length_S+flag_num_S+self.msg_S).encode('utf-8'))
+        checksum_S = checksum.hexdigest()
+        #compile into a string
+        return length_S + flag_num_S + checksum_S
+
+
+    @staticmethod
+    def corrupt(byte_S):
+        #extract the fields
+        length_S = byte_S[0:Packet.length_S_length]
+        flag_num_S = byte_S[Packet.length_S_length : Packet.flag_num_S_length+Packet.flag_num_S_length]
+        checksum_S = byte_S[Packet.flag_num_S_length+Packet.seq_flag_S_length :]
+
+        #compute the checksum locally
+        checksum = hashlib.md5(str(length_S+seq_num_S+msg_S).encode('utf-8'))
+        computed_checksum_S = checksum.hexdigest()
+        #and check if the same
+        return checksum_S != computed_checksum_S
+
+    def is_nak(self):
+        if self.flag == 0:
+            return True
+        return False
+
+    def is_ack(self):
+        if self.flag == 1:
+            return True
+        return False
+
 
 class RDT:
     ## latest sequence number used in a packet
     seq_num = 1
+    check_sum = 32
     ## buffer of bytes read from network
     byte_buffer = '' 
 
@@ -91,11 +143,103 @@ class RDT:
             
     
     def rdt_2_1_send(self, msg_S):
-        pass
-        
+
+        while True:
+            sending = True
+            p = Packet(self.seq_num, msg_S)
+            self.seq_num += 1
+            self.network.udt_send(p.get_byte_S())
+
+            while sending:
+                bytes = self.network.udt_receive()
+                p = Packet_2.from_byte_S(bytes)
+
+                if p.corrupt(bytes) or p.is_nak():
+                    self.network.udt_send(p.get_byte_S())
+
+                elif not p.corrupt(bytes) and p.is_ack():
+                    p = Packet(self.seq_num, msg_S)
+                    self.seq_num -= 1
+                    self.network.udt_send(p.get_byte_S())
+
+                    secondTry = True
+                    while secondTry:
+                        bytes = self.network.udt_receive()
+                        p = Packet_2.from_byte_S(bytes)
+
+                        if p.corrupt(bytes) or p.is_nak():
+                            self.network.udt_send(p.get_byte_S())
+
+                        elif not p.corrupt(bytes) and p.is_ack():
+                            sending = False
+                            break
+
+
     def rdt_2_1_receive(self):
-        pass
-    
+        ret_S = None
+
+        while True:
+            byte_S = self.network.udt_receive()
+            self.byte_buffer += byte_S
+
+            if(len(self.byte_buffer) < Packet.length_S_length):
+                return ret_S #not enough bytes to read packet length
+            length = int(self.byte_buffer[:Packet.length_S_length])
+            if len(self.byte_buffer) < length:
+                return ret_S #not enough bytes to read the whole packet
+            p = Packet.from_byte_S(self.byte_buffer[0:length])
+
+            receiving = True
+
+            while receiving:
+                if not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                    ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
+                    self.byte_buffer = self.byte_buffer[length:]
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+
+                    bytes = self.network.udt_receive()
+                    p = Packet.from_byte_S(bytes)
+
+                    if p.corrupt(bytes):
+                        pac = Packet_2(0)
+                        self.network.udt_send(pac.get_byte_S())
+                    elif not p.corrupt(byte_S) and p.seq_num == 0:
+                        pac = Packet_2(1)
+                        self.network.udt_send(pac.get_byte_S())
+                    elif not p.corrupt(byte_S) and p.seq_num == 1:
+                        self.byte_buffer += byte_S
+
+                        if(len(self.byte_buffer) < Packet.length_S_length):
+                            return ret_S #not enough bytes to read packet length
+                        length = int(self.byte_buffer[:Packet.length_S_length])
+                        if len(self.byte_buffer) < length:
+                            return ret_S #not enough bytes to read the whole packet
+                        p = Packet.from_byte_S(self.byte_buffer[0:length])
+
+                        ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
+                        self.byte_buffer = self.byte_buffer[length:]
+                        pac = Packet_2(1)
+                        self.network.udt_send(pac.get_byte_S())
+
+                        secondTry = True
+
+                        while secondTry:
+                            if p.corrupt(bytes):
+                                pac = Packet_2(0)
+                                self.network.udt_send(pac.get_byte_S())
+                            elif not p.corrupt(byte_S) and p.seq_num == 1:
+                                pac = Packet_2(1)
+                                self.network.udt_send(pac.get_byte_S())
+                            elif not p.corrupt(byte_S) and p.seq_num == 0:
+                                receiving = False
+                                break
+
+
+
+
+
+
     def rdt_3_0_send(self, msg_S):
         pass
         

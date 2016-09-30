@@ -141,7 +141,7 @@ class RDT:
             self.byte_buffer = self.byte_buffer[length:]
             #if this was the last packet, will return on the next iteration
             
-    
+
     def rdt_2_1_send(self, msg_S):
 
         while True:
@@ -174,6 +174,36 @@ class RDT:
                             sending = False
                             break
 
+'''
+
+    def rdt_2_1_send(self, msg_S):
+        p = Packet(self.seq_num, msg_S)
+        self.seq_num += 1
+
+        if (self.network.rdt_receive(byte_S) and (corrupt(byte_S) or isNAK(byte_S))):
+            self.network.udt_send(p.get_byte_S())
+
+        elif (self.network.rdt_receive(byte_S) and not corrupt(byte_S) and isACK(byte_S)):
+            #do nothing
+            print()
+
+        elif (self.network.rdt_send(byte_S)):
+            #compute checksum
+            #make packet
+            self.network.udt_send(p.get_byte_S())
+
+        elif (self.network.rdt_receive(byte_S) and (corrupt(byte_S) or isNAK(byte_S))):
+            self.network.udt_send(p.get_byte_S())
+
+        elif (self.network.rdt_receive(byte_S) and not corrupt(byte_S) and isACK(byte_S)):
+            #do nothing
+            print()
+
+        elif (self.network.rdt_send(byte_S)):
+            #compute checksum
+            #make packet
+            self.network.udt_send(p.get_byte_S())
+'''
 
     def rdt_2_1_receive(self):
         ret_S = None
@@ -234,10 +264,6 @@ class RDT:
                             elif not p.corrupt(byte_S) and p.seq_num == 0:
                                 receiving = False
                                 break
-
-
-
-
 
 
     def rdt_3_0_send(self, msg_S):

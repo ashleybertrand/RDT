@@ -152,7 +152,6 @@ class RDT:
             
 
     def rdt_2_1_send(self, msg_S):
-
         while True:
             if self.seq_num == 0:
                 print ("send 0")
@@ -162,13 +161,17 @@ class RDT:
 
                 sending = True
                 while sending:
-                    bytes = self.network.udt_receive()
-                    if bytes:
-                        pac = Packet_2.from_byte_S(bytes)
-                        if pac.corrupt(bytes) or pac.is_nak(pac.flag):
+                    result = self.network.udt_receive()
+                    if result:
+                        pac = Packet_2.from_byte_S(result)
+                        if pac.corrupt(result) or pac.is_nak(pac.flag):
+                            print("HELLUUURRR")
                             self.network.udt_send(p.get_byte_S())
-                        elif not pac.corrupt(bytes) and pac.is_ack(pac.flag):
+                        elif not pac.corrupt(result) and pac.is_ack(pac.flag):
+                            print("DO WE GET HERE???????????")
                             sending = False
+                    else:
+                        print("NOOOOOOPPPPPPEEEEEEEE")
 
             elif self.seq_num == 1:
                 print ("send 1")
@@ -177,44 +180,16 @@ class RDT:
                 self.network.udt_send(p.get_byte_S())
                 sending = True
                 while sending:
-                    bytes = self.network.udt_receive()
-                    if bytes:
-                        pac = Packet_2.from_byte_S(bytes)
-                        if pac.corrupt(bytes) or pac.is_nak(pac.flag):
+                    result = self.network.udt_receive()
+                    if result:
+                        pac = Packet_2.from_byte_S(result)
+                        if pac.corrupt(result) or pac.is_nak(pac.flag):
                             self.network.udt_send(p.get_byte_S())
-                        elif not pac.corrupt(bytes) and pac.is_ack(pac.flag):
+                        elif not pac.corrupt(result) and pac.is_ack(pac.flag):
                             sending = False
+        
 
-    '''
 
-    def rdt_2_1_send(self, msg_S):
-        p = Packet(self.seq_num, msg_S)
-        self.seq_num += 1
-
-        if (self.network.rdt_receive(byte_S) and (corrupt(byte_S) or isNAK(byte_S))):
-            self.network.udt_send(p.get_byte_S())
-
-        elif (self.network.rdt_receive(byte_S) and not corrupt(byte_S) and isACK(byte_S)):
-            #do nothing
-            print()
-
-        elif (self.network.rdt_send(byte_S)):
-            #compute checksum
-            #make packet
-            self.network.udt_send(p.get_byte_S())
-
-        elif (self.network.rdt_receive(byte_S) and (corrupt(byte_S) or isNAK(byte_S))):
-            self.network.udt_send(p.get_byte_S())
-
-        elif (self.network.rdt_receive(byte_S) and not corrupt(byte_S) and isACK(byte_S)):
-            #do nothing
-            print()
-
-        elif (self.network.rdt_send(byte_S)):
-            #compute checksum
-            #make packet
-            self.network.udt_send(p.get_byte_S())
-    '''
 
     def rdt_2_1_receive(self):
         ret_S = None

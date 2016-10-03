@@ -104,6 +104,7 @@ class NetworkLayer:
         with self.lock:
             ret_S = self.buffer_S
             self.buffer_S = ''
+        print("RET_S:", ret_S)
         return ret_S
     
  

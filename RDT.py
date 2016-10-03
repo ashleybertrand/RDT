@@ -1,5 +1,6 @@
 import Network
 import argparse
+import time
 from time import sleep
 import hashlib
 
@@ -250,6 +251,53 @@ class RDT:
 
 
     def rdt_3_0_send(self, msg_S):
+
+        if self.state_send == 0:
+            p = Packet(self.seq_num, msg_S)
+            self.network.udt_send(p.get_byte_S())
+            timeout = 5
+            time_of_last_data = time.time()
+
+            sending = True
+            while sending:
+                bytes_S = self.network.udt_receive()
+                if len(bytes_S) == Packet_2.full_length:
+                    pac = Packet_2.from_byte_S(bytes_S)
+
+                    if pac.corrupt(bytes_S) or pac.is_ack0(pac.flag):
+                        continue
+                    elif time_of_last_data + timeout < time.time():
+                        self.network.udt_send(p.get_byte_S())
+                        timeout = 5
+                        time_of_last_data = time.time()
+                    elif not pac.corrupt(bytes_S) or pac.is_ack1(pac.flag):
+                        self.seq_num -= 1
+                        self.state_send = 1
+                        sending = False
+
+        elif self.state_send == 1:
+            p = Packet(self.seq_num, msg_S)
+            self.network.udt_send(p.get_byte_S())
+            timeout = 5
+            time_of_last_data = time.time()
+
+            sending = True
+            while sending:
+                bytes_S = self.network.udt_receive()
+                if len(bytes_S) == Packet_2.full_length:
+                    pac = Packet_2.from_byte_S(bytes_S)
+
+                    if pac.corrupt(bytes_S) or pac.is_ack1(pac.flag):
+                        continue
+                    elif time_of_last_data + timeout < time.time():
+                        self.network.udt_send(p.get_byte_S())
+                        timeout = 5
+                        time_of_last_data = time.time()
+                    elif not pac.corrupt(bytes_S) or pac.is_ack0(pac.flag):
+                        self.seq_num += 1
+                        self.state_send = 0
+                        #Stop timer??
+                        sending = False
         '''
         STATE 0
         wait for packet
@@ -283,7 +331,6 @@ class RDT:
                             go to STATE 0
         '''
 
-        pass
         
     def rdt_3_0_receive(self):
         ret_S = None

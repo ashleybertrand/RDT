@@ -96,12 +96,25 @@ class Packet_2(Packet):
         #and check if the same
         return checksum_S != computed_checksum_S
 
+    ## for RDT 2.1
     def is_nak(self, flag):
         if flag == 0:
             return True
         return False
 
     def is_ack(self, flag):
+        if flag == 1:
+            return True
+        return False
+
+
+    ## for RDT 3.0
+    def is_ack0(self, flag):
+        if flag == 0:
+            return True
+        return False
+
+    def is_ack1(self, flag):
         if flag == 1:
             return True
         return False
@@ -203,38 +216,122 @@ class RDT:
 
             if self.rcv_state == 0:
                 if p.corrupt(p.get_byte_S()):
+                    #NAK
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
                 elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                    #ACK
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
                 elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
                     ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
                     self.byte_buffer = self.byte_buffer[length:]
+                    #ACK
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
                     self.rcv_state = 1
 
             elif self.rcv_state == 1:
                 if p.corrupt(p.get_byte_S()):
+                    #NAK
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
                 elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+                    #ACK
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
                 elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
                     ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
                     self.byte_buffer = self.byte_buffer[length:]
+                    #ACK
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
                     self.rcv_state = 0
 
 
     def rdt_3_0_send(self, msg_S):
+        '''
+        STATE 0
+        wait for packet
+            if packet:
+                make packet(seq_num = 0, msg, checkSum)
+                udt_send
+                start timer
+                    receive packet
+                    while waiting for ACK0 packet
+                        if packet is corrupt or ACK1
+                            keep waiting
+                        timeout
+                            udt_send packet again
+                            restart timer
+                        if packet not corrupt and ACK0
+                            go to STATE 1
+        STATE 1
+        wait for packet
+            if packet:
+                make packet(seq_num = 1, msg, checkSum)
+                udt_send
+                start timer
+                    receive packet
+                    while waiting for ACK1 packet
+                        if packet is corrupt or ACK0
+                            keep waiting
+                        timeout
+                            udt_send packet again
+                            restart timer
+                        if packet not corrupt and ACK1
+                            go to STATE 0
+        '''
+
         pass
         
     def rdt_3_0_receive(self):
-        pass
+        ret_S = None
+
+        while (True):
+            byte_S = None
+            while byte_S is None:
+                byte_S = self.network.udt_receive()
+                if byte_S:
+                    self.byte_buffer += byte_S
+                    break
+                else:
+                    continue
+
+            if(len(self.byte_buffer) < Packet.length_S_length):
+                sleep(0.5)
+                return ret_S #not enough bytes to read packet length
+            length = int(self.byte_buffer[:Packet.length_S_length])
+            if len(self.byte_buffer) < length:
+                sleep(0.5)
+                return ret_S #not enough bytes to read the whole packet
+            p = Packet.from_byte_S(self.byte_buffer[0:length])
+
+            if self.rcv_state == 0:
+                if p.corrupt(p.get_byte_S()) or p.seq_num == 0:
+                    #ACK0
+                    pac = Packet_2(0)
+                    self.network.udt_send(pac.get_byte_S())
+                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+                    ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
+                    self.byte_buffer = self.byte_buffer[length:]
+                    #ACK1
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+                    self.rcv_state = 1
+
+            elif self.rcv_state == 1:
+                if p.corrupt(p.get_byte_S()) or p.seq_num == 1:
+                    #ACK1
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                    ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
+                    self.byte_buffer = self.byte_buffer[length:]
+                    #ACK0
+                    pac = Packet_2(0)
+                    self.network.udt_send(pac.get_byte_S())
+                    self.rcv_state = 0
         
 
 if __name__ == '__main__':

@@ -112,7 +112,7 @@ class RDT:
     seq_num = 1
     state_send = 0
     check_sum = 32
-    state = 0
+    rcv_state = 0
     ## buffer of bytes read from network
     byte_buffer = '' 
 
@@ -163,7 +163,7 @@ class RDT:
                         self.network.udt_send(p.get_byte_S())
                     elif not pac.corrupt(bytes_S) and pac.is_ack(pac.flag):
                         self.seq_num -= 1
-                        self.state_send += 1
+                        self.state_send = 1
                         sending = False
 
         elif self.state_send == 1:
@@ -176,7 +176,7 @@ class RDT:
                         self.network.udt_send(p.get_byte_S())
                     elif not pac.corrupt(bytes_S) and pac.is_ack(pac.flag):
                         self.seq_num += 1
-                        self.state_send -= 1
+                        self.state_send = 0
                         sending = False
 
     def rdt_2_1_receive(self):
@@ -191,7 +191,7 @@ class RDT:
                     break
                 else:
                     continue
-                    
+
             if(len(self.byte_buffer) < Packet.length_S_length):
                 sleep(0.5)
                 return ret_S #not enough bytes to read packet length
@@ -201,7 +201,7 @@ class RDT:
                 return ret_S #not enough bytes to read the whole packet
             p = Packet.from_byte_S(self.byte_buffer[0:length])
 
-            if self.state == 0:
+            if self.rcv_state == 0:
                 if p.corrupt(p.get_byte_S()):
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
@@ -213,9 +213,9 @@ class RDT:
                     self.byte_buffer = self.byte_buffer[length:]
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
-                    self.state = 1
+                    self.rcv_state = 1
 
-            elif self.state == 1:
+            elif self.rcv_state == 1:
                 if p.corrupt(p.get_byte_S()):
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
@@ -227,7 +227,7 @@ class RDT:
                     self.byte_buffer = self.byte_buffer[length:]
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
-                    self.state = 0
+                    self.rcv_state = 0
 
 
     def rdt_3_0_send(self, msg_S):

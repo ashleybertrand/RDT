@@ -60,6 +60,7 @@ class Packet_2(Packet):
     length_S_length = 10
     ## length of md5 checksum in hex
     checksum_length = 32
+    full_length = flag_num_S_length + length_S_length + checksum_length
 
     def __init__(self, flag):
         self.flag = flag
@@ -95,10 +96,8 @@ class Packet_2(Packet):
         checksum = hashlib.md5(str(length_S+flag_num_S).encode('utf-8'))
         computed_checksum_S = checksum.hexdigest()
         #and check if the same
-        print (length_S)
-        print (flag_num_S)
-        print (checksum_S)
-        print (computed_checksum_S)
+        print ("corr", checksum_S)
+        print ("corr", computed_checksum_S)
         return checksum_S != computed_checksum_S
 
     def is_nak(self, flag):
@@ -114,8 +113,10 @@ class Packet_2(Packet):
 
 class RDT:
     ## latest sequence number used in a packet
-    seq_num = 0
+    seq_num = 1
+    state_send = 0
     check_sum = 32
+    state = 0
     ## buffer of bytes read from network
     byte_buffer = '' 
 
@@ -153,74 +154,43 @@ class RDT:
 
     def rdt_2_1_send(self, msg_S):
 
-        while True:
-            if self.seq_num == 0:
-                print ("send 0")
-                p = Packet(self.seq_num, msg_S)
-                self.seq_num += 1
-                self.network.udt_send(p.get_byte_S())
-
-                sending = True
-                while sending:
-                    bytes = self.network.udt_receive()
-                    if bytes:
-                        pac = Packet_2.from_byte_S(bytes)
-                        if pac.corrupt(bytes) or pac.is_nak(pac.flag):
-                            self.network.udt_send(p.get_byte_S())
-                        elif not pac.corrupt(bytes) and pac.is_ack(pac.flag):
-                            sending = False
-
-            elif self.seq_num == 1:
-                print ("send 1")
-                p = Packet(self.seq_num, msg_S)
-                self.seq_num -= 1
-                self.network.udt_send(p.get_byte_S())
-                sending = True
-                while sending:
-                    bytes = self.network.udt_receive()
-                    if bytes:
-                        pac = Packet_2.from_byte_S(bytes)
-                        if pac.corrupt(bytes) or pac.is_nak(pac.flag):
-                            self.network.udt_send(p.get_byte_S())
-                        elif not pac.corrupt(bytes) and pac.is_ack(pac.flag):
-                            sending = False
-
-    '''
-
-    def rdt_2_1_send(self, msg_S):
         p = Packet(self.seq_num, msg_S)
-        self.seq_num += 1
+        self.network.udt_send(p.get_byte_S())
+        if self.state_send == 0:
+            print ("send 0")
+            sending = True
+            while sending:
+                bytes = self.network.udt_receive()
+                if len(bytes) == Packet_2.full_length:
+                    pac = Packet_2.from_byte_S(bytes)
+                    if pac.corrupt(bytes) or pac.is_nak(pac.flag):
+                        self.network.udt_send(p.get_byte_S())
+                    elif not pac.corrupt(bytes) and pac.is_ack(pac.flag):
+                        self.seq_num += 1
+                        self.state_send += 1
+                        sending = False
+                        break
 
-        if (self.network.rdt_receive(byte_S) and (corrupt(byte_S) or isNAK(byte_S))):
-            self.network.udt_send(p.get_byte_S())
-
-        elif (self.network.rdt_receive(byte_S) and not corrupt(byte_S) and isACK(byte_S)):
-            #do nothing
-            print()
-
-        elif (self.network.rdt_send(byte_S)):
-            #compute checksum
-            #make packet
-            self.network.udt_send(p.get_byte_S())
-
-        elif (self.network.rdt_receive(byte_S) and (corrupt(byte_S) or isNAK(byte_S))):
-            self.network.udt_send(p.get_byte_S())
-
-        elif (self.network.rdt_receive(byte_S) and not corrupt(byte_S) and isACK(byte_S)):
-            #do nothing
-            print()
-
-        elif (self.network.rdt_send(byte_S)):
-            #compute checksum
-            #make packet
-            self.network.udt_send(p.get_byte_S())
-    '''
+        elif self.state_send == 1:
+            print ("send 1")
+            sending = True
+            while sending:
+                bytes = self.network.udt_receive()
+                if len(bytes) == Packet_2.full_length:
+                    pac = Packet_2.from_byte_S(bytes)
+                    if pac.corrupt(bytes) or pac.is_nak(pac.flag):
+                        self.network.udt_send(p.get_byte_S())
+                    elif not pac.corrupt(bytes) and pac.is_ack(pac.flag):
+                        self.seq_num -= 1
+                        self.state_send -= 0
+                        sending = False
 
     def rdt_2_1_receive(self):
         ret_S = None
         byte_S = self.network.udt_receive()
         self.byte_buffer += byte_S
-        while True:
+
+        while (True):
             if(len(self.byte_buffer) < Packet.length_S_length):
                 return ret_S #not enough bytes to read packet length
             length = int(self.byte_buffer[:Packet.length_S_length])
@@ -228,51 +198,37 @@ class RDT:
                 return ret_S #not enough bytes to read the whole packet
             p = Packet.from_byte_S(self.byte_buffer[0:length])
 
-            if not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+            if self.state == 0:
                 print ("rec 0")
-                ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
-                self.byte_buffer = self.byte_buffer[length:]
-                pac = Packet_2(1)
-                self.network.udt_send(pac.get_byte_S())
+                if p.corrupt(p.get_byte_S()):
+                    pac = Packet_2(0)
+                    self.network.udt_send(pac.get_byte_S())
+                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+                    ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
+                    self.byte_buffer = self.byte_buffer[length:]
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+                    self.state = 1
 
-                sending = True
-                while sending:
-                    byte_S = self.network.udt_receive()
-                    if byte_S:
-                        length = int(byte_S[:Packet.length_S_length])
-                        p = Packet.from_byte_S(byte_S[0:length])
-
-                        if p.corrupt(p.get_byte_S()):
-                            pac = Packet_2(0)
-                            self.network.udt_send(pac.get_byte_S())
-                        elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
-                            pac = Packet_2(1)
-                            self.network.udt_send(pac.get_byte_S())
-                        elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
-                            sending = False
-
-            if not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+            elif self.state == 1:
                 print ("rec 1")
-                ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
-                self.byte_buffer = self.byte_buffer[length:]
-                pac = Packet_2(1)
-                self.network.udt_send(pac.get_byte_S())
+                if p.corrupt(p.get_byte_S()):
+                    pac = Packet_2(0)
+                    self.network.udt_send(pac.get_byte_S())
+                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                    ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
+                    self.byte_buffer = self.byte_buffer[length:]
+                    pac = Packet_2(1)
+                    self.network.udt_send(pac.get_byte_S())
+                    self.state = 0
 
-                sending = True
-                while sending:
-                    byte_S = self.network.udt_receive()
 
-                    if byte_S:
-                        length = int(byte_S[:Packet.length_S_length])
-                        p = Packet.from_byte_S(byte_S[0:length])
-                        if p.corrupt(p.get_byte_S()):
-                            pac = Packet_2(0)
-                            self.network.udt_send(pac.get_byte_S())
-                        elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
-                            pac = Packet_2(1)
-                            self.network.udt_send(pac.get_byte_S())
-                        elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
-                            sending = False
 
     def rdt_3_0_send(self, msg_S):
         pass

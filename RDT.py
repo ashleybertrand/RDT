@@ -10,7 +10,8 @@ class Packet:
     seq_num_S_length = 10
     length_S_length = 10
     ## length of md5 checksum in hex
-    checksum_length = 32 
+    checksum_length = 32
+    corrupt_p = False
         
     def __init__(self, seq_num, msg_S):
         self.seq_num = seq_num
@@ -19,11 +20,16 @@ class Packet:
     @classmethod
     def from_byte_S(self, byte_S):
         if Packet.corrupt(byte_S):
-            raise RuntimeError('Cannot initialize Packet: byte_S is corrupt')
+            #raise RuntimeError('Cannot initialize Packet: byte_S is corrupt')
+            #print ('Cannot initialize Packet: byte_S is corrupt')
+            self.corrupt_p = True
+            return self(byte_S, 0)
         #extract the fields
-        seq_num = int(byte_S[Packet.length_S_length : Packet.length_S_length+Packet.seq_num_S_length])
-        msg_S = byte_S[Packet.length_S_length+Packet.seq_num_S_length+Packet.checksum_length :]
-        return self(seq_num, msg_S)
+        else:
+            self.corrupt_p = False
+            seq_num = int(byte_S[Packet.length_S_length : Packet.length_S_length+Packet.seq_num_S_length])
+            msg_S = byte_S[Packet.length_S_length+Packet.seq_num_S_length+Packet.checksum_length :]
+            return self(seq_num, msg_S)
         
         
     def get_byte_S(self):
@@ -60,6 +66,7 @@ class Packet_2(Packet):
     ## length of md5 checksum in hex
     checksum_length = 32
     full_length = flag_num_S_length + length_S_length + checksum_length
+    corrupt_p = False
 
     def __init__(self, flag):
         self.flag = flag
@@ -67,10 +74,15 @@ class Packet_2(Packet):
     @classmethod
     def from_byte_S(self, byte_S):
         if Packet_2.corrupt(byte_S):
-            raise RuntimeError('Cannot initialize Packet: byte_S is corrupt')
+            #raise RuntimeError('Cannot initialize Packet: byte_S is corrupt')
+            #print ('Cannot initialize Packet: byte_S is corrupt')
+            self.corrupt_p = True
+            return self(byte_S)
         #extract the fields
-        flag = int(byte_S[Packet_2.length_S_length : Packet_2.length_S_length+Packet_2.flag_num_S_length])
-        return self(flag)
+        else:
+            self.corrupt_p = False
+            flag = int(byte_S[Packet_2.length_S_length : Packet_2.length_S_length+Packet_2.flag_num_S_length])
+            return self(flag)
 
 
     def get_byte_S(self):
@@ -171,9 +183,9 @@ class RDT:
             sending = True
             while sending:
                 bytes_S = self.network.udt_receive()
-                if len(bytes_S) == Packet_2.full_length:
+                if bytes_S:
                     pac = Packet_2.from_byte_S(bytes_S)
-                    if pac.corrupt(bytes_S) or pac.is_nak(pac.flag):
+                    if pac.corrupt_p == True or pac.is_nak(pac.flag):
                         self.network.udt_send(p.get_byte_S())
                     elif not pac.corrupt(bytes_S) and pac.is_ack(pac.flag):
                         self.seq_num -= 1
@@ -184,9 +196,9 @@ class RDT:
             sending = True
             while sending:
                 bytes_S = self.network.udt_receive()
-                if len(bytes_S) == Packet_2.full_length:
+                if bytes_S:
                     pac = Packet_2.from_byte_S(bytes_S)
-                    if pac.corrupt(bytes_S) or pac.is_nak(pac.flag):
+                    if pac.corrupt_p == True or pac.is_nak(pac.flag):
                         self.network.udt_send(p.get_byte_S())
                     elif not pac.corrupt(bytes_S) and pac.is_ack(pac.flag):
                         self.seq_num += 1
@@ -216,15 +228,15 @@ class RDT:
             p = Packet.from_byte_S(self.byte_buffer[0:length])
 
             if self.rcv_state == 0:
-                if p.corrupt(p.get_byte_S()):
+                if p.corrupt_p == True:
                     #NAK
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
-                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                elif p.corrupt_p == False and p.seq_num == 0:
                     #ACK
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
-                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+                elif p.corrupt_p == False and p.seq_num == 1:
                     ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
                     self.byte_buffer = self.byte_buffer[length:]
                     #ACK
@@ -233,15 +245,15 @@ class RDT:
                     self.rcv_state = 1
 
             elif self.rcv_state == 1:
-                if p.corrupt(p.get_byte_S()):
+                if p.corrupt_p == True:
                     #NAK
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
-                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 1:
+                elif p.corrupt_p == False and p.seq_num == 1:
                     #ACK
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())
-                elif not p.corrupt(p.get_byte_S()) and p.seq_num == 0:
+                elif p.corrupt_p == False and p.seq_num == 0:
                     ret_S = p.msg_S if (ret_S is None) else ret_S + p.msg_S
                     self.byte_buffer = self.byte_buffer[length:]
                     #ACK
@@ -255,49 +267,51 @@ class RDT:
         if self.state_send == 0:
             p = Packet(self.seq_num, msg_S)
             self.network.udt_send(p.get_byte_S())
-            timeout = 5
+            timeout = 1
             time_of_last_data = time.time()
 
+            print (time_of_last_data)
             sending = True
             while sending:
                 bytes_S = self.network.udt_receive()
-                if len(bytes_S) == Packet_2.full_length:
+                if bytes_S:
                     pac = Packet_2.from_byte_S(bytes_S)
-
-                    if pac.corrupt(bytes_S) or pac.is_ack0(pac.flag):
+                    if pac.corrupt_p == True or pac.is_ack0(pac.flag):
                         continue
-                    elif time_of_last_data + timeout < time.time():
-                        self.network.udt_send(p.get_byte_S())
-                        timeout = 5
-                        time_of_last_data = time.time()
-                    elif not pac.corrupt(bytes_S) or pac.is_ack1(pac.flag):
+                    elif pac.corrupt_p == False or pac.is_ack1(pac.flag):
                         self.seq_num -= 1
                         self.state_send = 1
                         sending = False
+                    elif time_of_last_data + timeout < time.time():
+
+                        self.network.udt_send(p.get_byte_S())
+                        timeout = 1
+                        time_of_last_data = time.time()
 
         elif self.state_send == 1:
             p = Packet(self.seq_num, msg_S)
             self.network.udt_send(p.get_byte_S())
-            timeout = 5
+            timeout = 1
             time_of_last_data = time.time()
 
             sending = True
             while sending:
                 bytes_S = self.network.udt_receive()
-                if len(bytes_S) == Packet_2.full_length:
+                if bytes_S:
                     pac = Packet_2.from_byte_S(bytes_S)
-
-                    if pac.corrupt(bytes_S) or pac.is_ack1(pac.flag):
+                    if pac.corrupt_p == True or pac.is_ack1(pac.flag):
                         continue
-                    elif time_of_last_data + timeout < time.time():
-                        self.network.udt_send(p.get_byte_S())
-                        timeout = 5
-                        time_of_last_data = time.time()
-                    elif not pac.corrupt(bytes_S) or pac.is_ack0(pac.flag):
+                    elif pac.corrupt_p == False or pac.is_ack0(pac.flag):
                         self.seq_num += 1
                         self.state_send = 0
                         #Stop timer??
                         sending = False
+                    elif time_of_last_data + timeout < time.time():
+                        self.network.udt_send(p.get_byte_S())
+                        timeout = 1
+                        time_of_last_data = time.time()
+
+
         '''
         STATE 0
         wait for packet
@@ -355,7 +369,7 @@ class RDT:
             p = Packet.from_byte_S(self.byte_buffer[0:length])
 
             if self.rcv_state == 0:
-                if p.corrupt(p.get_byte_S()) or p.seq_num == 0:
+                if p.corrupt_p == True or p.seq_num == 0:
                     #ACK0
                     pac = Packet_2(0)
                     self.network.udt_send(pac.get_byte_S())
@@ -368,7 +382,7 @@ class RDT:
                     self.rcv_state = 1
 
             elif self.rcv_state == 1:
-                if p.corrupt(p.get_byte_S()) or p.seq_num == 1:
+                if p.corrupt_p == True or p.seq_num == 1:
                     #ACK1
                     pac = Packet_2(1)
                     self.network.udt_send(pac.get_byte_S())

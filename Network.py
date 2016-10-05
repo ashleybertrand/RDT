@@ -10,8 +10,11 @@ import random
 class NetworkLayer:
     #configuration parameters
     prob_pkt_loss = 0
-    prob_byte_corr = 0
+    prob_byte_corr = 0.5
     prob_pkt_reorder = 0
+
+    print("loss", prob_pkt_loss)
+    print("corrupt", prob_byte_corr)
     
     #class variables
     sock = None
@@ -57,14 +60,20 @@ class NetworkLayer:
         
     def udt_send(self, msg_S):
         #return without sending if the packet is being dropped
+        #ran1 = random.random()
+        #ran2 = random.random()
+        
         if random.random() < self.prob_pkt_loss:
-            return
+            #print ("ran1", ran1)
+            return -1
         #corrupt a packet
         if random.random() < self.prob_byte_corr:
+            #print ("ran2", ran2)
             start = random.randint(0,len(msg_S)-5)
             num = random.randint(1,5)
             repl_S = ''.join(random.sample('XXXXX', num)) #sample length >= num
             msg_S = msg_S[:start]+repl_S+msg_S[start+num:]
+            return -1
         #reorder packets - either hold a packet back, or if one held back then send both
         if random.random() < self.prob_pkt_reorder or self.reorder_msg_S:
             if self.reorder_msg_S is None:
@@ -73,7 +82,6 @@ class NetworkLayer:
             else:
                 msg_S += self.reorder_msg_S
                 self.reorder_msg_S = None
-                
         #keep calling send until all the bytes are transferred
         totalsent = 0
         while totalsent < len(msg_S):

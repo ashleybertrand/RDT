@@ -175,8 +175,8 @@ class RDT:
             
 
     def rdt_2_1_send(self, msg_S):
-
         p = Packet(self.seq_num, msg_S)
+        print("send 1")
         self.network.udt_send(p.get_byte_S())
         print ("Sending", p.get_byte_S() )
         if self.state_send == 0:
@@ -213,7 +213,6 @@ class RDT:
 
     def rdt_2_1_receive(self):
         ret_S = None
-
         byte_S = None
         print ("rec = ", byte_S)
         while byte_S is None:
@@ -226,10 +225,12 @@ class RDT:
 
         while (True):
             if(len(self.byte_buffer) < Packet.length_S_length):
+                print("e")
                 sleep(0.5)
                 return ret_S #not enough bytes to read packet length
             length = int(self.byte_buffer[:Packet.length_S_length])
             if len(self.byte_buffer) < length:
+                print("f")
                 sleep(0.5)
                 return ret_S #not enough bytes to read the whole packet
             p = Packet.from_byte_S(self.byte_buffer[0:length])

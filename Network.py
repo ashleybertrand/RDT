@@ -11,8 +11,11 @@ import random
 class NetworkLayer:
     #configuration parameters
     prob_pkt_loss = 0
-    prob_byte_corr = 0.1
+    prob_byte_corr = 0
     prob_pkt_reorder = 0
+
+    print("loss", prob_pkt_loss)
+    print("corrupt", prob_byte_corr)
     
     #class variables
     sock = None
@@ -69,6 +72,7 @@ class NetworkLayer:
             num = random.randint(1,5)
             repl_S = ''.join(random.sample('XXXXX', num)) #sample length >= num
             msg_S = msg_S[:start]+repl_S+msg_S[start+num:]
+            return -1
         #reorder packets - either hold a packet back, or if one held back then send both
         if random.random() < self.prob_pkt_reorder or self.reorder_msg_S:
             if self.reorder_msg_S is None:

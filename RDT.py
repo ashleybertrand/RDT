@@ -77,7 +77,7 @@ class Packet_2(Packet):
             #raise RuntimeError('Cannot initialize Packet: byte_S is corrupt')
             #print ('Cannot initialize Packet: byte_S is corrupt')
             self.corrupt_p = True
-            return self(bytes)
+            return self(byte_S)
         #extract the fields
         else:
             self.corrupt_p = False
@@ -176,16 +176,16 @@ class RDT:
 
     def rdt_2_1_send(self, msg_S):
         p = Packet(self.seq_num, msg_S)
-        print("send 1")
         self.network.udt_send(p.get_byte_S())
-        print ("Sending", p.get_byte_S() )
+        print ("Sending", p.get_byte_S())
+
         if self.state_send == 0:
             print ("send 0")
             sending = True
             while sending:
                 bytes_S = self.network.udt_receive()
                 if len(bytes_S) == Packet_2.full_length:
-                    print ("b = ", bytes_S)
+                    print("b = ", bytes_S)
                     pac = Packet_2.from_byte_S(bytes_S)
                     if pac.corrupt_p or pac.is_nak(pac.flag):
                         print ("I'm sending = ", p.get_byte_S())
@@ -201,7 +201,7 @@ class RDT:
             while sending:
                 bytes_S = self.network.udt_receive()
                 if len(bytes_S) == Packet_2.full_length:
-                    print ("b = ", bytes_S)
+                    print("b = ", bytes_S)
                     pac = Packet_2.from_byte_S(bytes_S)
                     if pac.corrupt_p or pac.is_nak(pac.flag):
                         print ("I'm sending = ", p.get_byte_S())
@@ -214,7 +214,6 @@ class RDT:
     def rdt_2_1_receive(self):
         ret_S = None
         byte_S = None
-        print ("rec = ", byte_S)
         while byte_S is None:
             byte_S = self.network.udt_receive()
             if byte_S:
@@ -225,15 +224,14 @@ class RDT:
 
         while (True):
             if(len(self.byte_buffer) < Packet.length_S_length):
-                print("e")
                 sleep(0.5)
                 return ret_S #not enough bytes to read packet length
             length = int(self.byte_buffer[:Packet.length_S_length])
             if len(self.byte_buffer) < length:
-                print("f")
                 sleep(0.5)
                 return ret_S #not enough bytes to read the whole packet
             p = Packet.from_byte_S(self.byte_buffer[0:length])
+
             print ("I'm receiving = ", p.get_byte_S())
             if self.rcv_state == 0:
                 if p.corrupt_p:
@@ -339,11 +337,11 @@ class RDT:
                     continue
 
             if(len(self.byte_buffer) < Packet.length_S_length):
-                sleep(0.5)
+                sleep(1)
                 return ret_S #not enough bytes to read packet length
             length = int(self.byte_buffer[:Packet.length_S_length])
             if len(self.byte_buffer) < length:
-                sleep(0.5)
+                sleep(1)
                 return ret_S #not enough bytes to read the whole packet
             p = Packet.from_byte_S(self.byte_buffer[0:length])
 
@@ -389,8 +387,7 @@ if __name__ == '__main__':
         sleep(2)
         print(rdt.rdt_1_0_receive())
         rdt.disconnect()
-        
-        
+
     else:
         sleep(1)
         print(rdt.rdt_1_0_receive())
